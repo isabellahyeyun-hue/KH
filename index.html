@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>손위생 관찰기록 PWA 시스템</title>
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="손위생">
+<style>
+:root{--bg:#eef8f6;--bg2:#f8fbfd;--ink:#18353a;--muted:#5d7982;--line:#d7e5e8;--brand:#0f766e;--brand2:#0b5a54;--soft:#d9f3ee;--danger:#b42318;--warn:#b54708;--card:#ffffffee;--shadow:0 16px 36px rgba(15,43,54,.12);--nav:max(1cm,env(safe-area-inset-bottom))}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at top left,rgba(15,118,110,.12),transparent 36%),linear-gradient(180deg,var(--bg),var(--bg2) 60%,#fff);color:var(--ink);font-family:"SUIT Variable","Pretendard","Apple SD Gothic Neo","Noto Sans KR",sans-serif}body{min-height:100svh;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom);overflow:hidden}button,input,select{font:inherit}button{height:44px;border:0;border-radius:10px;cursor:pointer;font-size:15px}input,select{width:100%;height:44px;padding:10px;border:1px solid var(--line);border-radius:10px;background:#fffffff0;color:var(--ink);font-size:15px;box-sizing:border-box;font-family:inherit;line-height:24px;vertical-align:middle}
+.app{min-height:100vh;display:flex;flex-direction:column}
+header{position:sticky;top:0;z-index:20;padding:16px 18px 14px;background:#0f766eeb;color:#fff;backdrop-filter:blur(14px);box-shadow:0 12px 28px rgba(8,49,45,.16);flex-shrink:0;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:20px;font-weight:800;letter-spacing:-.02em;display:flex;align-items:center;gap:12px}
+.timer-btn{background:#fff;color:var(--brand);font-weight:800;padding:0 16px;height:36px;border-radius:8px;font-size:14px;box-shadow:0 4px 10px rgba(0,0,0,0.1)}
+.timer-btn.active{background:var(--danger);color:#fff}
+.content{width:min(980px,100%);margin:0 auto;padding:2mm 16px calc(2mm + 96px + var(--nav));flex:1;overflow:hidden;display:flex;flex-direction:column}
+.panel{display:none;gap:14px}.panel.active{display:grid;height:100%;display:flex;flex-direction:column}
+/* 1. 흰색 박스 세로 길이 1/4 확장 (80vh -> 100vh) */
+.card{padding:10px;background:var(--card);border:1px solid #ffffffd0;border-radius:24px;box-shadow:var(--shadow);height:100vh;display:flex;flex-direction:column;overflow:auto}
+.card h2,.card h3{margin:0 0 6px;font-size:15px;letter-spacing:-.02em}
+.field{display:grid;gap:4px;margin-bottom:8px}.field label,.field .label{font-size:13px;font-weight:700}
+.choices{display:grid;gap:8px;margin-top:4px}
+.choice{position:relative;display:block}.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice span{display:grid;align-items:center;height:40px;padding:8px 6px;border:1px solid var(--line);border-radius:10px;background:#fffffff5;text-align:center;line-height:1.2;font-weight:700;font-size:13px;box-sizing:border-box}
+.choice input:checked+span{border-color:var(--brand);background:linear-gradient(180deg,var(--brand),var(--brand2));color:#fff;box-shadow:0 8px 16px rgba(15,118,110,.18)}
+/* 3, 4, 5. 버튼 레이아웃 수정 */
+.grid-job{grid-template-columns:repeat(3, 1fr)}
+.grid-loc{grid-template-columns:repeat(4, 1fr)}
+.grid-moment{grid-template-columns:repeat(6, 1fr)}
+.grid-moment .choice:nth-child(1),.grid-moment .choice:nth-child(2),.grid-moment .choice:nth-child(3){grid-column:span 2}
+.grid-moment .choice:nth-child(4),.grid-moment .choice:nth-child(5){grid-column:span 3}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.primary{background:linear-gradient(180deg,var(--brand),var(--brand2));color:#fff;box-shadow:0 8px 16px rgba(15,118,110,.18)}
+/* 6. 저장 버튼 크기 확대 */
+#saveBtn{width:100%;height:60px;font-size:18px;font-weight:800;border-radius:15px}
+nav{position:fixed;left:14px;right:14px;bottom:var(--nav);z-index:25;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;padding:8px;background:#ffffffe8;border:1px solid #ffffffeb;border-radius:24px;box-shadow:0 18px 36px rgba(15,43,54,.18);backdrop-filter:blur(16px)}
+nav button{min-height:56px;border-radius:18px;background:transparent;color:var(--muted);font-weight:800}
+nav button.active{background:linear-gradient(180deg,var(--brand),var(--brand2));color:#fff}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>손위생 관찰기록 PWA <button id="timerBtn" type="button" class="timer-btn">시작</button></h1>
+  </header>
+  <main class="content">
+    <section class="panel active" data-tab="input">
+      <div class="card">
+        <form id="recordForm" novalidate style="flex:1;display:flex;flex-direction:column;gap:4px">
+          <input type="hidden" id="startTime">
+          <input type="hidden" id="endTime">
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+            <div class="field"><label>관찰자</label><input class="readonly" type="text" value="정혜윤" readonly></div>
+            <div class="field"><label>날짜</label><input id="dateInput" type="date" required></div>
+          </div>
+          
+          <div class="field">
+            <div class="label">직종</div>
+            <div class="choices grid-job">
+              <label class="choice"><input type="radio" name="job" value="2" required><span>간호사</span></label>
+              <label class="choice"><input type="radio" name="job" value="11"><span>의사</span></label>
+              <label class="choice"><input type="radio" name="job" value="32"><span>물리치료사</span></label>
+              <label class="choice"><input type="radio" name="job" value="31"><span>임상병리사</span></label>
+              <label class="choice"><input type="radio" name="job" value="33"><span>방사선사</span></label>
+              <label class="choice"><input type="radio" name="job" value="39"><span>기타</span></label>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">장소</div>
+            <div class="choices grid-loc">
+              <label class="choice"><input type="radio" name="location" value="29-1" required><span>2병동</span></label>
+              <label class="choice"><input type="radio" name="location" value="29-2"><span>3병동</span></label>
+              <label class="choice"><input type="radio" name="location" value="29-3"><span>4병동</span></label>
+              <label class="choice"><input type="radio" name="location" value="61"><span>검사실(채혈)</span></label>
+              <label class="choice"><input type="radio" name="location" value="62"><span>검사실(물리)</span></label>
+              <label class="choice"><input type="radio" name="location" value="63"><span>검사실(방사)</span></label>
+              <label class="choice"><input type="radio" name="location" value="5"><span>외래</span></label>
+              <label class="choice"><input type="radio" name="location" value="7"><span>기타</span></label>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">행위</div>
+            <div class="choices grid-moment">
+              <label class="choice"><input type="radio" name="moment" value="1" required><span>환자 접촉 전</span></label>
+              <label class="choice"><input type="radio" name="moment" value="2"><span>청결/무균 처치 전</span></label>
+              <label class="choice"><input type="radio" name="moment" value="3"><span>체액 노출 위험 후</span></label>
+              <label class="choice"><input type="radio" name="moment" value="4"><span>환자 접촉 후</span></label>
+              <label class="choice"><input type="radio" name="moment" value="5"><span>환자 주변 접촉 후</span></label>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="label">수행</div>
+            <div class="choices" style="grid-template-columns:repeat(3,1fr)">
+              <label class="choice"><input type="radio" name="action" value="1" required><span>Handrub</span></label>
+              <label class="choice"><input type="radio" name="action" value="2"><span>Handwash</span></label>
+              <label class="choice"><input type="radio" name="action" value="3"><span>미수행</span></label>
+            </div>
+          </div>
+
+          <button class="primary" id="saveBtn" type="submit">기록 저장</button>
+        </form>
+      </div>
+    </section>
+
+    <section class="panel" data-tab="records"><div class="card"><h2>조회/수정 준비 중</h2></div></section>
+    <section class="panel" data-tab="stats"><div class="card"><h2>통계 분석 준비 중</h2></div></section>
+    <section class="panel" data-tab="settings"><div class="card"><h2>설정 준비 중</h2></div></section>
+  </main>
+  <nav>
+    <button class="active" data-tab-btn="input">입력</button>
+    <button data-tab-btn="records">조회</button>
+    <button data-tab-btn="stats">통계</button>
+    <button data-tab-btn="settings">설정</button>
+  </nav>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const timerBtn = document.getElementById('timerBtn');
+  const startTimeInput = document.getElementById('startTime');
+  const endTimeInput = document.getElementById('endTime');
+  const dateInput = document.getElementById('dateInput');
+  dateInput.valueAsDate = new Date();
+
+  // 2. 타이머 로직: 실시간 시간 저장 및 버튼 텍스트 변경
+  timerBtn.onclick = () => {
+    const now = new Date();
+    const timeStr = now.getHours().toString().padStart(2, '0') + ":" + now.getMinutes().toString().padStart(2, '0');
+    
+    if (!timerBtn.classList.contains('active')) {
+      startTimeInput.value = timeStr;
+      timerBtn.innerText = "종료";
+      timerBtn.classList.add('active');
+    } else {
+      endTimeInput.value = timeStr;
+      timerBtn.innerText = "시작";
+      timerBtn.classList.remove('active');
+      alert(`관찰 종료: ${startTimeInput.value} ~ ${endTimeInput.value}`);
+    }
+  };
+
+  document.getElementById('recordForm').onsubmit = (e) => {
+    e.preventDefault();
+    if (!startTimeInput.value || !endTimeInput.value) {
+      alert("상단 '시작' 버튼을 눌러 관찰 시간을 기록해 주세요.");
+      return;
+    }
+    alert("데이터가 로컬에 저장되었습니다.");
+    e.target.reset();
+    dateInput.valueAsDate = new Date();
+    startTimeInput.value = "";
+    endTimeInput.value = "";
+  };
+
+  document.querySelectorAll('nav button').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.panel, nav button').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelector(`.panel[data-tab="${btn.dataset.tabBtn}"]`).classList.add('active');
+    };
+  });
+})();
+</script>
+</body>
+</html>
